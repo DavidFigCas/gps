@@ -20,9 +20,18 @@ static struct minmea_sentence_rmc lastFrame;
 float last_lat;
 float last_lon;
 float last_speed;
+static bool s_has_fix = false;
 static int sat = 0;
 static int qt = 0;
 static double last_update_time = 0;
+
+bool mgos_gps_get_location(float *lat, float *lon, float *speed)
+{
+    if (lat != NULL) *lat = last_lat;
+    if (lon != NULL) *lon = last_lon;
+    if (speed != NULL) *speed = last_speed;
+    return s_has_fix;
+}
 
 void mgos_save_location()
 {
@@ -81,6 +90,16 @@ static void parseGpsData(char *line)
 
             float lat = minmea_tocoord(&lastFrame.latitude);
             float lon = minmea_tocoord(&lastFrame.longitude);
+
+            /* Actualiza la última posición conocida solo con fixes válidos */
+            if (frame.valid && !isnan(lat) && !isnan(lon) && lat < 999 && lon < 999)
+            {
+                last_lat = lat;
+                last_lon = lon;
+                float sp = minmea_tofloat(&lastFrame.speed);
+                last_speed = isnan(sp) ? 0.0f : sp;
+                s_has_fix = true;
+            }
 
             // Aqui poner una condicion para llamar mgos_get_location() "gps.update_interval" qeu son segundos
             // Verifica el intervalo de actualización
