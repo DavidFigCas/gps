@@ -23,6 +23,14 @@ float last_speed;
 static int sat = 0;
 static int qt = 0;
 static double last_update_time = 0;
+// false hasta el primer guardado con fix real (lat/lon validos, no
+// NaN/>=999): permite que ESE guardado salte el throttle de
+// gps.update_interval en vez de esperar a que se cumpla el intervalo desde
+// el arranque (last_update_time nace en 0, asi que sin esto el primer fix
+// tarda hasta gps.update_interval segundos en propagarse aunque el GPS lo
+// haya conseguido casi de inmediato). Una vez guardado el primer fix real,
+// las actualizaciones siguientes vuelven a respetar el intervalo normal.
+static bool s_first_fix_saved = false;
 
 void mgos_save_location()
 {
@@ -81,13 +89,24 @@ static void parseGpsData(char *line)
 
             float lat = minmea_tocoord(&lastFrame.latitude);
             float lon = minmea_tocoord(&lastFrame.longitude);
+            bool has_fix = !isnan(lat) && !isnan(lon) && lat < 999 && lon < 999;
 
-            // Aqui poner una condicion para llamar mgos_get_location() "gps.update_interval" qeu son segundos
-            // Verifica el intervalo de actualización
+            // Verifica el intervalo de actualización, salvo que este sea el
+            // primer fix real: ese se guarda de inmediato (ver
+            // s_first_fix_saved arriba) para no esperar hasta
+            // gps.update_interval segundos de uptime solo porque
+            // last_update_time arranca en 0.
             double current_time = mgos_uptime(); // Obtén el tiempo en segundos desde el inicio
-            if (current_time - last_update_time >= mgos_sys_config_get_gps_update_interval())
+            bool interval_due = (current_time - last_update_time) >=
+                                 mgos_sys_config_get_gps_update_interval();
+            bool first_fix = has_fix && !s_first_fix_saved;
+            if (interval_due || first_fix)
             {
                 last_update_time = current_time;
+                if (has_fix)
+                {
+                    s_first_fix_saved = true;
+                }
 
                 // Llama a la función para obtener la ubicación
                 mgos_save_location();
